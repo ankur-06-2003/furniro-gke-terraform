@@ -1,0 +1,5 @@
+region="us-central1"
+zone="us-central1-a"
+project="round-centaur-477210-k3"
+K8s_version="1.31.6-gke.1020000"
+cluster_name="gke-cluster"

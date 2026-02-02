@@ -1,0 +1,113 @@
+# VPC
+resource "google_compute_network" "vpc" {
+  name                    = "prod-vpc"
+  auto_create_subnetworks = false
+}
+
+# Subnet with Secondary IPs (GKE)
+resource "google_compute_subnetwork" "subnet" {
+  name          = "prod-subnet"
+  region        = var.region
+  network       = google_compute_network.vpc.id
+  ip_cidr_range = "10.10.0.0/16"
+
+  secondary_ip_range {
+    range_name    = "pods-range"
+    ip_cidr_range = "10.20.0.0/16"
+  }
+
+  secondary_ip_range {
+    range_name    = "services-range"
+    ip_cidr_range = "10.30.0.0/16"
+  }
+}
+
+# Firewall – External Ports
+resource "google_compute_firewall" "external_ports" {
+  name    = "gke-allow-external-ports"
+  network = google_compute_network.vpc.id
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80", "443", "8080", "9090","22","3389"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+}
+
+# Service Account for GKE Nodes
+resource "google_service_account" "gke_node_sa" {
+  account_id   = "gke-app-sa"
+  display_name = "GKE Node Service Account"
+}
+
+# Artifact Registry Access
+resource "google_project_iam_member" "artifact_registry_access" {
+  project = var.project
+  role    = "roles/artifactregistry.reader"
+  member  = "serviceAccount:${google_service_account.gke_node_sa.email}"
+}
+
+# GKE Cluster (Production)
+resource "google_container_cluster" "gke" {
+  name     = var.cluster_name
+  project  = var.project
+  location = var.region
+
+  network    = google_compute_network.vpc.id
+  subnetwork = google_compute_subnetwork.subnet.id
+
+  remove_default_node_pool = true
+  initial_node_count       = 1
+  deletion_protection      = false
+
+  min_master_version = var.K8s_version
+
+  ip_allocation_policy {
+    cluster_secondary_range_name  = "pods-range"
+    services_secondary_range_name = "services-range"
+  }
+
+  workload_identity_config {
+    workload_pool = "${var.project}.svc.id.goog"
+  }
+
+  logging_service    = "logging.googleapis.com/kubernetes"
+  monitoring_service = "monitoring.googleapis.com/kubernetes"
+
+  release_channel {
+    channel = "REGULAR"
+  }
+}
+
+# Node Pool (Production Nodes)
+resource "google_container_node_pool" "primary_nodes" {
+  name       = "prod-node-pool"
+  project    = var.project
+  location   = var.region
+  cluster    = google_container_cluster.gke.name
+  node_count = 3
+
+  node_config {
+    machine_type    = "e2-medium"
+    disk_size_gb    = 100
+    disk_type       = "pd-balanced"
+    image_type      = "UBUNTU_CONTAINERD"
+    service_account = google_service_account.gke_node_sa.email
+
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform"
+    ]
+
+    labels = {
+      environment = "production"
+    }
+
+    tags = ["gke-node"]
+  }
+
+  management {
+    auto_repair  = true
+    auto_upgrade = true
+  }
+}
