@@ -36,17 +36,17 @@ resource "google_compute_firewall" "external_ports" {
 }
 
 # Service Account for GKE Nodes
-resource "google_service_account" "gke_node_sa" {
-  account_id   = "gke-app-sa"
-  display_name = "GKE Node Service Account"
-}
+# use this to create new service account if not exists
+# resource "google_service_account" "gke_node_sa" {
+#   account_id   = "gke-app-sa"
+#   display_name = "GKE Node Service Account"
+# }
+# use this if you use existing service account
+# data "google_service_account" "gke_node_sa" {
+#   account_id = "gke-app-sa"
+#   project    = var.project
+# }
 
-# Artifact Registry Access
-resource "google_project_iam_member" "artifact_registry_access" {
-  project = var.project
-  role    = "roles/artifactregistry.reader"
-  member  = "serviceAccount:${google_service_account.gke_node_sa.email}"
-}
 
 # GKE Cluster (Production)
 resource "google_container_cluster" "gke" {
@@ -61,7 +61,6 @@ resource "google_container_cluster" "gke" {
   initial_node_count       = 1
   deletion_protection      = false
 
-  min_master_version = var.K8s_version
 
   ip_allocation_policy {
     cluster_secondary_range_name  = "pods-range"
@@ -93,7 +92,7 @@ resource "google_container_node_pool" "primary_nodes" {
     disk_size_gb    = 100
     disk_type       = "pd-balanced"
     image_type      = "UBUNTU_CONTAINERD"
-    service_account = google_service_account.gke_node_sa.email
+    service_account = "gke-app-sa@${var.project}.iam.gserviceaccount.com"
 
     oauth_scopes = [
       "https://www.googleapis.com/auth/cloud-platform"
