@@ -52,12 +52,13 @@ resource "google_compute_firewall" "external_ports" {
 resource "google_container_cluster" "gke" {
   name     = var.cluster_name
   project  = var.project
-  location = var.region
-
+  # location = var.region // for regional cluster
+  location = var.zone  // for zonal cluster
+  
   network    = google_compute_network.vpc.id
   subnetwork = google_compute_subnetwork.subnet.id
 
-  remove_default_node_pool = true
+  # remove_default_node_pool = true
   initial_node_count       = 1
   deletion_protection      = false
 
@@ -83,7 +84,8 @@ resource "google_container_cluster" "gke" {
 resource "google_container_node_pool" "primary_nodes" {
   name       = "prod-node-pool"
   project    = var.project
-  location   = var.region
+  # location   = var.region // for regional cluster
+  location   = var.zone // for zonal cluster
   cluster    = google_container_cluster.gke.name
   node_count = 3
 
